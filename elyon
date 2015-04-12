@@ -1,0 +1,105 @@
+#!/usr/bin/python3
+import getopt, datetime, sys
+from elyon_crawler import ElyonCrawler
+
+
+def main(argv):
+    SCRIPT_HELP = '''ElyonCrawler v1.0 by Daniel Mittelman, 2015
+Usage: elyon.py [Options] [Targets] [-b dd/mm/yyyy] [-e dd/mm/yyyy]
+A web crawler that extracts detailed verdict information from the Israeli Supreme Court's online data sources
+
+Crawl date range:
+    -b                        Start date
+    -e                        End date
+
+Output targets:
+    -o, --output              Output SQLite database file path (Default: elyon.db)
+    -l, --log                 Output log file path (Default: elyon.log)
+
+Options:
+    -T, --include-technical   Include technical resolutions
+    -F, --full-text           Save the full text of the document (Warning: increases output size significantly)
+    -S, --skip-confidential   Do not write confidential verdicts to the output database
+    -t, --timeout             Connection timeout in seconds (Default: 30)
+    -c, --threads             Number of crawl threads, between 1 and 10 (Default: 5)
+    -q                        Be quiet, write only critical messages to the standard output
+    -y                        Assume "yes" to all questions
+    -v, --verbose             Be verbose
+    -h, --help                Show this help prompt
+
+Examples:
+    Download all verdicts published between 15/02/2015 and 02/03/2015:
+        elyon.py -b 15/02/2015 -e 02/03/2015
+    Download all verdicts published between 15/02/2015 and today into output.db:
+        elyon.py -o output.db -b 15/02/2015
+    Download all verdicts (since 1987) except for confidential verdicts, using a timeout of 90 seconds:
+        elyon.py -S -t 90
+'''
+    start, end = datetime.datetime(1987, 11, 18), datetime.datetime.today()
+    logfile, outputfile = 'elyon.log', 'elyon.db'
+    verbose = False
+    quiet = False
+    skip_confidential = False
+    timeout = 30
+    threads = 5
+    technical = False
+    auto_yes = False
+    full_text = False
+
+    if len(argv) == 0:
+        print(SCRIPT_HELP)
+        sys.exit(0)
+
+    try:
+        opts, args = getopt.getopt(argv, "b:e:o:l:t:c:STFqvhdy",
+                                   ["help", "verbose", "output", "log", "skip-confidential",
+                                    "timeout", "threads", "include-technical", "full-text"])
+    except getopt.GetoptError:
+        print(SCRIPT_HELP)
+        sys.exit(-1)
+
+    for opt, arg in opts:
+        if opt in ("-h", "--help"):
+            print(SCRIPT_HELP)
+            sys.exit(0)
+        elif opt == "-b":
+            start = datetime.datetime.strptime(arg, "%d/%m/%Y")
+        elif opt == "-e":
+            end = datetime.datetime.strptime(arg, "%d/%m/%Y")
+        elif opt in ("-o", "--output"):
+            outputfile = arg
+        elif opt in ("-l", "--log"):
+            logfile = arg
+        elif opt in ("-S", "--skip-confidential"):
+            skip_confidential = True
+        elif opt in ("-T", "--include-technical"):
+            technical = True
+        elif opt in ("-F", "--full-text"):
+            full_text = True
+        elif opt == "-q":
+            quiet = True
+        elif opt in ("-t", "--timeout"):
+            timeout = int(arg)
+        elif opt in ("-c", "--threads"):
+            if int(arg) > 10:
+                print("Cannot spawn more than 10 concurrent crawl threads!")
+                sys.exit(-1)
+            threads = int(arg)
+        elif opt == "-y":
+            auto_yes = True
+        elif opt in ("-v", "--verbose"):
+            verbose = True
+
+    # If crawling over a period of more than 30 days, show a warning prompt
+    if not auto_yes and (end - start).days > 30:
+        print("This will extract over 30 days of verdicts! Are you sure? (y/N): ", end='', flush=True)
+        if sys.stdin.read(1) != "y":
+            return
+
+    c = ElyonCrawler(start, end, logfile, outputfile, verbose, quiet,
+                     skip_confidential, timeout, threads, technical, full_text)
+    c.crawl()
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
