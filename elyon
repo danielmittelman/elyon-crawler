@@ -1,11 +1,12 @@
 #!/usr/bin/python3
+__author__ = 'daniel'
 import getopt, datetime, sys
 from elyon_crawler import ElyonCrawler
 
 
 def main(argv):
     SCRIPT_HELP = '''ElyonCrawler v1.0 by Daniel Mittelman, 2015
-Usage: elyon.py [Options] [Targets] [-b dd/mm/yyyy] [-e dd/mm/yyyy]
+Usage: elyon [Options] [Targets] [-b dd/mm/yyyy] [-e dd/mm/yyyy]
 A web crawler that extracts detailed verdict information from the Israeli Supreme Court's online data sources
 
 Crawl date range:
@@ -29,11 +30,11 @@ Options:
 
 Examples:
     Download all verdicts published between 15/02/2015 and 02/03/2015:
-        elyon.py -b 15/02/2015 -e 02/03/2015
+        elyon -b 15/02/2015 -e 02/03/2015
     Download all verdicts published between 15/02/2015 and today into output.db:
-        elyon.py -o output.db -b 15/02/2015
+        elyon -o output.db -b 15/02/2015
     Download all verdicts (since 1987) except for confidential verdicts, using a timeout of 90 seconds:
-        elyon.py -S -t 90
+        elyon -S -t 90
 '''
     start, end = datetime.datetime(1987, 11, 18), datetime.datetime.today()
     logfile, outputfile = 'elyon.log', 'elyon.db'

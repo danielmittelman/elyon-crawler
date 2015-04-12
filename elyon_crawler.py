@@ -200,6 +200,17 @@ class ElyonCrawler:
         thread_pool.terminate()
         return tasks_results
 
+        # Use Python's multiprocessing Pool API to manage the subprocess pool and execute
+        # the jobs concurrently based on the configured thread count
+        #try:
+        #    thread_pool = Pool(self.threads)
+        #    cases = thread_pool.map(self.get_case, data_tree_numbered)
+        #    thread_pool.terminate()
+        #    return cases
+        #except KeyboardInterrupt:
+        #    thread_pool.terminate()
+        #    sys.exit(0)
+
     # Retrieves and parses the information for a single case.
     # This is the work performed by each worker threads
     def get_case(self, thread_info):
@@ -232,7 +243,7 @@ class ElyonCrawler:
             ).decode("utf-8", "ignore")
 
             # The information is located after the XML document, so remove anything before it
-            view_state = re.sub(r'^([\s\S]+?)</Results>', '', view_state)
+            view_state = re.sub(r'^([\s\S]+?)(</Results>|<Results />)', '', view_state)
 
             # The number of pages is calculated using two fields: The number of results
             # and the results per page. These appear in the following format:
@@ -373,4 +384,4 @@ class ElyonCrawler:
             it += 1
 
         # Print a success line to the standard output and log
-        self.log_message(self.LogLevel.INFO, "ElyonCrawler done, exiting                  ", trunc=True)
+        self.log_message(self.LogLevel.INFO, "ElyonCrawler done, exiting", trunc=True)
