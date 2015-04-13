@@ -260,7 +260,10 @@ class ElyonCrawler:
     # on the old website (elyon2)
     def get_verdict_extended_info(self, case_id, filename):
         # Generate the query URL
-        [sn, year] = case_id.split(r"/")  # Split the case ID into the year and serial number
+        try:
+            [sn, year] = case_id.split(r"/")  # Split the case ID into the year and serial number
+        except:
+            return '', [], []
         sn = sn.zfill(6)  # Pad the serial number to 6 characters
         year = "19" + year if (int(year) >= 77) else "20" + year  # Extend the year to its full format
         query_url = self.EXTENDED_INFO_URL_PREFIX + year + "-" + sn + "-0"
@@ -384,4 +387,4 @@ class ElyonCrawler:
             it += 1
 
         # Print a success line to the standard output and log
-        self.log_message(self.LogLevel.INFO, "ElyonCrawler done, exiting", trunc=True)
+        self.log_message(self.LogLevel.INFO, "ElyonCrawler done, exiting                 ", trunc=True)
