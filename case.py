@@ -27,7 +27,7 @@ class CourtCase:
             self.status = extended_info[0]
             self.sides = extended_info[1]
             self.judges = extended_info[2]
-            self.technical = (xml.find("OWSISTECHNICAL").text == "True")
+            self.technical = 1 if (xml.find("OWSISTECHNICAL").text.lower() == "true") else 0
             self.doc_text = text
 
             # Also calculate the following fields
@@ -51,7 +51,7 @@ class CourtCase:
         except:
             return ""
 
-        return res.read().decode("cp1255")
+        return res.read().decode("cp1255", "ignore")
 
     # Returns whether the court ordered one of the parties to pay the court fees
     @staticmethod

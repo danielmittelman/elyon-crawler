@@ -30,6 +30,12 @@ class ElyonCrawler:
         INFO     = 2
         ERROR    = 3
 
+    # General progress
+    start_time = 0
+    downloaded_bytes = 0
+    downloaded_verdicts = 0
+
+    # Globals - cookie jar for retaining cookies throughout requests, thread pool
     cookie_jar = http.cookiejar.CookieJar()
     thread_pool = None
     pool_progress, pool_total = 0, 0
@@ -48,6 +54,8 @@ class ElyonCrawler:
         self.threads = threads
         self.technical = technical
         self.full_text = full_text
+
+        self.start_time = datetime.datetime.now()
 
     # Searches the new website (elyon1) during the given time period
     # and calls the subsequent methods which handle extraction and insertion
@@ -193,23 +201,13 @@ class ElyonCrawler:
         for i in range(len(data_tree)):
             data_tree_numbered.append((i, data_tree[i]))
 
+        # Initialize a thread pool and execute the jobs concurrently
         thread_pool = Pool(self.threads)
         callback = partial(self.print_status_line)
         tasks = [thread_pool.apply_async(self.get_case, (x, ), callback=callback) for x in data_tree_numbered]
         tasks_results = [task.get() for task in tasks]
         thread_pool.terminate()
         return tasks_results
-
-        # Use Python's multiprocessing Pool API to manage the subprocess pool and execute
-        # the jobs concurrently based on the configured thread count
-        #try:
-        #    thread_pool = Pool(self.threads)
-        #    cases = thread_pool.map(self.get_case, data_tree_numbered)
-        #    thread_pool.terminate()
-        #    return cases
-        #except KeyboardInterrupt:
-        #    thread_pool.terminate()
-        #    sys.exit(0)
 
     # Retrieves and parses the information for a single case.
     # This is the work performed by each worker threads
@@ -222,7 +220,7 @@ class ElyonCrawler:
         # the same time, space out the first round of worker threads by using incremental
         # sleep delays. Remember that queue_pos is 0-based, so the first thread is not delayed
         if queue_pos < self.threads:
-            time.sleep(queue_pos / 5.0)  # Space out threads by 200ms
+            time.sleep(queue_pos / 20.0)  # Space out threads by 50ms
 
         # Fetch the document text from the server and
         doc_filename = CourtCase.extract_filename(row)
@@ -358,7 +356,7 @@ class ElyonCrawler:
     def print_status_line(self, _):
         if not self.verbose:
             self.pool_progress += 1
-            sys.stdout.write('\r[INFO] Processing interval ({0} / {1} verdicts processed)'.format(
+            sys.stdout.write('\r[INFO] Processing interval ({0} / {1} verdicts processed, )'.format(
                 str(self.pool_progress), str(self.pool_total))
             )
 

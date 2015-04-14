@@ -57,8 +57,7 @@ class ElyonDatabase:
                            "is_technical, is_unanimous, court_fees_mandated) "
                            "VALUES(?,?,?,?,?,?,?,?,?,?)",
                            (case.date, case.group, case.subject, case.case_id,
-                            case.doc_type, case.doc_url, case.status,
-                            1 if case.technical else 0,
+                            case.doc_type, case.doc_url, case.status, case.technical,
                             case.is_unanimous, case.fees_mandated))
             row_id = str(cursor.lastrowid)
 
