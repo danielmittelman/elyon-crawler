@@ -68,9 +68,12 @@ class ElyonCrawler:
         req = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.cookie_jar))
         req.addheaders = list(self.headers.items())
 
+        # Try to connect and retrieve the contents into a BeautifulSoup object if possible
         try:
             res = req.open(self.SEARCH_URL, timeout=self.timeout)
-            if not(res.code == 200):
+            if res.code == 200:
+                soup = BeautifulSoup(res)
+            else:
                 self.log_message(self.LogLevel.ERROR, "Initial connect failed, server returned code " + str(res.code))
                 return
         except Exception as e:
@@ -81,9 +84,6 @@ class ElyonCrawler:
         self.headers["Origin"] = "http://elyon1.court.gov.il"
         self.headers["Referer"] = "http://elyon1.court.gov.il/verdictssearch/HebrewVerdictsSearch.aspx"
         req.addheaders = list(self.headers.items())
-
-        # Prepare a BeautifulSoup object to extract ASP.NET's session validation attributes
-        soup = BeautifulSoup(res)
 
         post_map = {
             "Search$ddlYear": "",
@@ -106,19 +106,19 @@ class ElyonCrawler:
         }
         post_data = urllib.parse.urlencode(post_map).encode("UTF-8")
 
-        # Request the search results page
+        # Request the search results page and create a BeautifulSoup object from the HTML response
         try:
             res = req.open(self.SEARCH_URL, data=post_data, timeout=self.timeout)
-            if not(res.code == 200):
+            if res.code == 200:
+                soup = BeautifulSoup(res)
+            else:
                 self.log_message(self.LogLevel.ERROR, "Interval search failed, server returned code " + str(res.code))
                 return
         except Exception as e:
             self.log_message(self.LogLevel.ERROR, "Interval search failed, exception: " + str(e))
             return
 
-        # Create a BeautifulSoup object from the response HTML and pass it
-        # over to run_crawl_loop to handle the page
-        soup = BeautifulSoup(res)
+        # Calculate the number of results and pass the results to run_crawl_loop()
         page_count, result_count = self.calculate_page_count(soup)
         self.pool_total = result_count
         self.run_crawl_loop(req, soup, page_count)
@@ -270,7 +270,10 @@ class ElyonCrawler:
         try:
             res = urllib.request.urlopen(query_url, timeout=self.timeout)
             self.log_message(self.LogLevel.VERBOSE, "Retrieving information for case " + case_id)
-            if not(res.code == 200):
+
+            if res.code == 200:
+                soup = BeautifulSoup(res)
+            else:
                 self.log_message(self.LogLevel.ERROR, "Failed to pull extended information for verdict "
                                  + case_id, ", server returned code " + str(res.code))
                 return '', [], []
@@ -278,8 +281,6 @@ class ElyonCrawler:
             self.log_message(self.LogLevel.ERROR, "Failed to pull extended information for verdict "
                              + case_id, ", exception: " + str(e))
             return '', [], []
-
-        soup = BeautifulSoup(res)
 
         # Check if the case is confidential, if it is the information will not be available
         if self.is_case_confidential(soup):
@@ -350,15 +351,24 @@ class ElyonCrawler:
         if level.value >= stderr_min_level.value:
             print("{0}[{1}] ({2}) ".format(
                 trunc_char, level.name, datetime.datetime.now().strftime("%H:%M:%S")
-            ) + msg, file=sys.stderr)
+            ) + msg, file=(sys.stderr if level.value == self.LogLevel.ERROR else sys.stderr))
 
     # Print a status line if the crawler is not running in verbose mode
     def print_status_line(self, _):
         if not self.verbose:
             self.pool_progress += 1
-            sys.stdout.write('\r[INFO] Processing interval ({0} / {1} verdicts processed, )'.format(
-                str(self.pool_progress), str(self.pool_total))
+            # Prepare the progress bar
+            percent = float(self.pool_progress) / int(self.pool_total)
+            hashes = '#' * int(percent * 20)
+            spaces = ' ' * (19 - len(hashes))
+            bar = "[{0}] {1}%".format((hashes + spaces), round(percent * 100))
+
+            sys.stdout.write('\r[INFO] Processing interval ({0} / {1} verdicts processed)       {2}'.format(
+                str(self.pool_progress), str(self.pool_total), bar)
             )
+
+            if percent == 1.0:
+                sys.stdout.write('\x1b[2K') # Erase the progress line
 
             sys.stdout.flush()
 

@@ -46,12 +46,14 @@ class CourtCase:
     def get_document_text(doc_url, timeout):
         try:
             res = urllib.request.urlopen(doc_url, timeout=timeout)
-            if not(res.code == 200):
-                return ""
+            if res.code == 200:
+                return res.read().decode("cp1255", "ignore")
         except:
             return ""
 
-        return res.read().decode("cp1255", "ignore")
+        return ""
+
+
 
     # Returns whether the court ordered one of the parties to pay the court fees
     @staticmethod

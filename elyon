@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 __author__ = 'daniel'
-import getopt, datetime, sys
+import getopt, datetime, sys, os
+import traceback
 from elyon_crawler import ElyonCrawler
 
 
@@ -31,8 +32,8 @@ Options:
 Examples:
     Download all verdicts published between 15/02/2015 and 02/03/2015:
         elyon -b 15/02/2015 -e 02/03/2015
-    Download all verdicts published between 15/02/2015 and today into output.db:
-        elyon -o output.db -b 15/02/2015
+    Download all verdicts published between 15/02/2015 and today into output.db, using 8 threads:
+        elyon -o output.db -b 15/02/2015 -c 8
     Download all verdicts (since 1987) except for confidential verdicts, using a timeout of 90 seconds:
         elyon -S -t 90
 '''
@@ -99,8 +100,12 @@ Examples:
 
     c = ElyonCrawler(start, end, logfile, outputfile, verbose, quiet,
                      skip_confidential, timeout, threads, technical, full_text)
-    c.crawl()
-
+    try:
+        c.crawl()
+    except Exception as e:
+        c.log_message(ElyonCrawler.LogLevel.ERROR,
+                      "Crawler exception: " + str(e) + os.linesep + traceback.format_exc()
+                      )
 
 if __name__ == "__main__":
     main(sys.argv[1:])
