@@ -2,7 +2,22 @@
 __author__ = 'daniel'
 import getopt, datetime, sys, os
 import traceback
+import pickle
+import crawler_methods
 from elyon_crawler import ElyonCrawler
+
+
+def serialize(lst):
+    if len(lst) > 0:
+        with open('elyon.fails', 'wb') as f:
+            pickle.dump(lst, f)
+            f.flush()
+
+
+def deserialize():
+    with open('elyon.fails', 'rb') as f:
+        s = pickle.load(f)
+    return s
 
 
 def main(argv):
@@ -10,9 +25,10 @@ def main(argv):
 Usage: elyon [Options] [Targets] [-b dd/mm/yyyy] [-e dd/mm/yyyy]
 A web crawler that extracts detailed verdict information from the Israeli Supreme Court's online data sources
 
-Crawl date range:
-    -b                        Start date
-    -e                        End date
+Crawl work mode:
+    -b                        Start crawling from this date
+    -e                        Stop crawling when reaching this date
+    -R, --retry               Retry failed verdicts from a previous run. Overrides the -b and -e flags
 
 Output targets:
     -o, --output              Output SQLite database file path (Default: elyon.db)
@@ -36,8 +52,11 @@ Examples:
         elyon -o output.db -b 15/02/2015 -c 8
     Download all verdicts (since 1987) except for confidential verdicts, using a timeout of 90 seconds:
         elyon -S -t 90
+    Complete the last run by downloading all the verdicts that have failed
+        elyon -R
 '''
     start, end = datetime.datetime(1987, 11, 18), datetime.datetime.today()
+    retry = False
     logfile, outputfile = 'elyon.log', 'elyon.db'
     verbose = False
     quiet = False
@@ -53,9 +72,9 @@ Examples:
         sys.exit(0)
 
     try:
-        opts, args = getopt.getopt(argv, "b:e:o:l:t:c:STFqvhdy",
+        opts, args = getopt.getopt(argv, "b:e:o:l:t:c:STRFqvhdy",
                                    ["help", "verbose", "output", "log", "skip-confidential",
-                                    "timeout", "threads", "include-technical", "full-text"])
+                                    "timeout", "threads", "include-technical", "full-text", "retry"])
     except getopt.GetoptError:
         print(SCRIPT_HELP)
         sys.exit(-1)
@@ -68,6 +87,8 @@ Examples:
             start = datetime.datetime.strptime(arg, "%d/%m/%Y")
         elif opt == "-e":
             end = datetime.datetime.strptime(arg, "%d/%m/%Y")
+        elif opt in ("-R", "--retry"):
+            retry = True
         elif opt in ("-o", "--output"):
             outputfile = arg
         elif opt in ("-l", "--log"):
@@ -100,12 +121,24 @@ Examples:
 
     c = ElyonCrawler(start, end, logfile, outputfile, verbose, quiet,
                      skip_confidential, timeout, threads, technical, full_text)
+
+    # Start the crawling process. Upon a critical error or a keyboard interrupt,
+    # serialize the list of failures to file and exit with the appropriate exit code
     try:
-        c.crawl()
+        if not retry:
+            c.crawl()
+        else:
+            c.retry_crawl(deserialize())
+    except KeyboardInterrupt:
+        c.log_message(crawler_methods.LogLevel.INFO,
+                      "Exiting on user request")
     except Exception as e:
-        c.log_message(ElyonCrawler.LogLevel.ERROR,
-                      "Crawler exception: " + str(e) + os.linesep + traceback.format_exc()
-                      )
+        c.log_message(crawler_methods.LogLevel.ERROR,
+                                "Crawler exception: " + str(e) + os.linesep + traceback.format_exc())
+    finally:
+        # Serialize all the FaultEntity instances into file and exit
+        serialize(c.get_retry_list())
+        sys.exit()
 
 if __name__ == "__main__":
     main(sys.argv[1:])
