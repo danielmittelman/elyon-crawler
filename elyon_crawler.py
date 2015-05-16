@@ -21,21 +21,19 @@ from crawler_methods import FaultEntity, LogLevel
 
 
 class ElyonCrawler:
-    FAULT_THRESHOLD = 150
+    FAULT_THRESHOLD = 100
 
-    # Global fault variables
-    fault_count = 0
-    fault_pause_duration = 1
+    # Global fault list
     fault_list = []
 
-    # Globals - cookie jar for retaining cookies throughout requests, thread pool
+    # Globals
     cookie_jar = http.cookiejar.CookieJar()
     thread_pool = None
     pool_progress, pool_total = 0, 0
 
     def __init__(self, start, end, logfile='elyon.log', outputfile='elyon.db',
                  verbose=False, quiet=False, skip_confidential=False,
-                 timeout=30, threads=2, technical=False, full_text=False):
+                 timeout=30, threads=5, technical=False, full_text=False):
         self.start = start
         self.end = end
         self.logfile = logfile
@@ -55,14 +53,15 @@ class ElyonCrawler:
 
         Returns the request object used to perform the request, the BeautifulSoup object containing
         the first search results page, and the number of pages the search results are spread over"""
-        self.log_message(LogLevel.INFO, "Starting interval: " + start_date + " - " + end_date +
-                         " ({0:.2f}%)".format(percent), trunc=True)
+        self.log_message(LogLevel.INFO, "Starting interval: " + start_date.strftime("%d/%m/%Y")
+                         + " - " + end_date.strftime("%d/%m/%Y")
+                         + " ({0:.2f}%)".format(percent), trunc=True)
 
         # Test initial connection and get the search form page
         try:
             req, soup = crawler_methods.test_connectivity(self.cookie_jar, self.timeout)
         except Exception as e:
-            self.add_failure(FaultEntity(start_date, end_date))
+            self.add_failure(FaultEntity((start_date, end_date)))
             self.log_message(LogLevel.ERROR, "Initial connection failed, exception: " + str(e))
             return None, None, None
 
@@ -71,7 +70,7 @@ class ElyonCrawler:
             soup = crawler_methods.get_first_search_result_page(
                 req, soup, start_date, end_date, self.technical, self.timeout)
         except Exception as e:
-            self.add_failure(FaultEntity(start_date, end_date))
+            self.add_failure(FaultEntity((start_date, end_date)))
             self.log_message(LogLevel.ERROR, "Initial search failed, exception: " + str(e))
             return None, None, None
 
@@ -102,11 +101,11 @@ class ElyonCrawler:
             thread_info.append((post_map.copy(), req, i, self.threads, self.timeout))
 
         # Fetch the result pages simultaneously
-        self.log_message(crawler_methods.LogLevel.VERBOSE, "Retrieving all results pages for this interval...")
+        self.log_message(LogLevel.VERBOSE, "Retrieving all results pages for this interval...")
         pool = Pool(self.threads)
         pages = pool.map(crawler_methods.fetch_page, thread_info)
         pool.terminate()
-        self.log_message(crawler_methods.LogLevel.VERBOSE, str(len(pages)) + " results pages retrieved")
+        self.log_message(LogLevel.VERBOSE, str(len(pages)) + " results pages retrieved")
 
         # Split the result list into pages that were fetched and not fetched
         failed_pages = [a for (a, b) in pages if type(a) == int and b is None]
@@ -141,8 +140,8 @@ class ElyonCrawler:
             item = {
                 "index": i,
                 "row": data_tree[i],
-                "start_date": start_date,
-                "end_date": end_date,
+                "start_date": start_date.strftime("%d/%m/%Y"),
+                "end_date": end_date.strftime("%d/%m/%Y"),
                 "page_number": page_number
             }
             data_tree_numbered.append(item)
@@ -250,12 +249,12 @@ class ElyonCrawler:
             if not(r.status == 'חסוי' and self.skip_confidential):
                 db.insert_case(r)
 
-    # Returns whether a verdict is confidential or not
     def is_case_confidential(self, soup):
+        """Returns whether a verdict is confidential or not"""
         return str(soup).find("חסויים") > 0
 
-    # Prints a status line if the crawler is not running in verbose mode
     def print_status_line(self, _):
+        """Prints a status line if the crawler is not running in verbose mode"""
         if not self.verbose:
             self.pool_progress += 1
             # Prepare the progress bar
@@ -269,39 +268,19 @@ class ElyonCrawler:
             )
 
             if percent == 1.0:
-                sys.stdout.write('\x1b[2K') # Erase the progress line
+                sys.stdout.write('\x1b[2K')  # Erase the progress line
 
             sys.stdout.flush()
 
-    # Keeps track of faults and their frequency and pauses the script if a large number
-    # of faults occur within a short period of time.
-    # fault_scale is used to describe the gravity of the fault (a problem with a single verdict would
-    # have a low scale number, a major connectivity issue would result in a high number).
-    # This method is called every time a faultable method succeeds/fails. Whenever a method fails, this
-    # should be called with the appropriate FaultLevel value, and whenever a method succeeds, this should
-    # be called with no parameters.
-    """def manage_faults(self, fault_scale=None):
-        # First, adjust the fault variables according to the call
-        if fault_scale is None:
-            # Reduce fault_count and fault_pause_duration by 1 for every success
-            if self.fault_count > 0: self.fault_count -= 1
-            if self.fault_pause_duration > 1: self.fault_pause_duration -= 1
-        else:
-            self.fault_count += fault_scale.value
-
-        # If the call was due to a failure and the fault variables are above the permitted threshold,
-        # pause the crawler
-        #if fault_scale is not None and self.fault_count >= self.FAULT_THRESHOLD:"""
-
     def add_failure(self, fault_entity):
+        """Adds a FaultEntity to the fault list and increase the fault_count appropriately"""
         self.fault_list.append(fault_entity)
-        # TODO manage the fault count correctly - self.fault_count += <Fault_Score>
 
     def get_retry_list(self):
         return self.fault_list
 
-    # Handles writing log messages to the standard output and/or file
     def log_message(self, level, msg, trunc=False):
+        """Handles writing log messages to the standard output and/or file"""
         # Set the minimum log levels based on user input
         file_min_level = LogLevel.VERBOSE if self.verbose else LogLevel.INFO
         stderr_min_level = LogLevel.ERROR if self.quiet else file_min_level
@@ -326,7 +305,7 @@ class ElyonCrawler:
     # to the output database file and/or to the output log file
     def crawl(self):
         # Notify start
-        self.log_message(crawler_methods.LogLevel.INFO, "ElyonCrawler started, using " + str(self.threads) + " concurrent threads")
+        self.log_message(LogLevel.INFO, "ElyonCrawler started, using " + str(self.threads) + " concurrent threads")
 
         # Generate a list of week-long intervals to run over between the given dates
         intervals = crawler_methods.generate_interval_list(self.start, self.end)
@@ -338,10 +317,7 @@ class ElyonCrawler:
             it += 1
 
             # Get the first search results page. Upon error, continue
-            req, soup, page_count = self.perform_search(
-                s.strftime("%d/%m/%Y"),
-                e.strftime("%d/%m/%Y"),
-                (it * 100.0 / total))
+            req, soup, page_count = self.perform_search(s, e, (it * 100.0 / total))
 
             if req is None:
                 continue
@@ -379,12 +355,12 @@ class ElyonCrawler:
             return
 
         # Notify start
-        self.log_message(crawler_methods.LogLevel.INFO, "ElyonCrawler started, retrying previously failed verdicts, "
+        self.log_message(LogLevel.INFO, "ElyonCrawler started, retrying previously failed verdicts, "
                                                         "using " + str(self.threads) + " concurrent threads")
         for fault in faults:
             # fault can represent one of three entities: A single verdict, a page inside an interval
             # or a complete interval. Each of these needs to be handled a little differently
-            start_date, end_date = fault.interval[0].strftime("%d/%m/%Y"), fault.interval[1].strftime("%d/%m/%Y")
+            start_date, end_date = fault.interval[0], fault.interval[1]
             req, soup, page_count = self.perform_search(start_date, end_date)
 
             if req is None:
@@ -408,8 +384,8 @@ class ElyonCrawler:
                     self.insert_results_to_db(success_verdicts)
                     self.log_message(LogLevel.VERBOSE, "Writing buffer to database")
 
-                    for fv in failed_verdicts:
-                        self.add_failure(fv)
+                    if failed_verdicts is not None:
+                        self.add_failure(failed_verdicts)
             elif len(success_pages) > 0:
                 page_soup = BeautifulSoup(success_pages[0][1])
                 success_verdicts, failed_verdicts = self.handle_result_page(
@@ -422,4 +398,3 @@ class ElyonCrawler:
 
         # Print a success line to the standard output and log
         self.log_message(LogLevel.INFO, "ElyonCrawler done, exiting                 ", trunc=True)
-

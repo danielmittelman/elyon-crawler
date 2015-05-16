@@ -1,7 +1,5 @@
 import urllib
 import datetime
-import sys
-import os
 import time
 import re
 import base64
@@ -23,11 +21,13 @@ headers = {
     "Accept-Language": "en-US,en;q=0.8,he;q=0.6"
     }
 
+
 # Log message levels
 class LogLevel(Enum):
     VERBOSE  = 1
     INFO     = 2
     ERROR    = 3
+
 
 # Crawler fault increments
 class FaultLevel(Enum):
@@ -81,8 +81,8 @@ def get_first_search_result_page(req, soup, start_date, end_date, technical=Fals
         "Search$ddlMadors": "",
         "Search$ddlPages": 0,
         "Search$chkTechnical": "on" if technical else "",  # Turns technical resolutions search on/off
-        "Search$txtDateFrom": start_date,
-        "Search$txtDateTo": end_date,
+        "Search$txtDateFrom": start_date.strftime("%d/%m/%Y"),
+        "Search$txtDateTo": end_date.strftime("%d/%m/%Y"),
         "__VIEWSTATE": soup.find_all(id="__VIEWSTATE")[0]['value'],
         "__EVENTTARGET": "Search$lnkSearch",
         "__LASTFOCUS": "",
@@ -125,7 +125,8 @@ def calculate_page_count(soup):
         # Calculate the number of pages
         return math.ceil(int(result_count) / int(results_per_page)), result_count
     except:
-        return 0
+        return 0, 0
+
 
 def generate_page_postmap(soup):
     post_map = {
@@ -134,6 +135,7 @@ def generate_page_postmap(soup):
         "__EVENTVALIDATION": soup.find_all(id="__EVENTVALIDATION")[0]['value']
     }
     return post_map
+
 
 # Worker thread function for fetching a results page
 def fetch_page(param):
@@ -169,6 +171,7 @@ def fetch_page(param):
 
     return get_number, None
 
+
 def generate_interval_list(start_date, end_date):
     # Split the date range into equal, week-long subranges
     days_count = (end_date - start_date).days
@@ -181,6 +184,7 @@ def generate_interval_list(start_date, end_date):
 
     return r
 
+
 def get_entity_type(fault_entity):
     """Read the FaultEntity and use its fields to determine its type"""
     if fault_entity.interval is None:
@@ -189,7 +193,7 @@ def get_entity_type(fault_entity):
     if fault_entity.page is None:
         return FaultLevel.INTERVAL
 
-    if fault_entity.verdict is None:
+    if fault_entity.verdicts is None:
         return FaultLevel.RESULT_PAGE
 
     return FaultLevel.VERDICT
@@ -205,3 +209,11 @@ class FaultEntity:
         self.interval = interval
         self.page = page
         self.verdicts = verdicts
+
+    def __str__(self):
+        return "Entity data: %s - %s, page: %s, verdict: %s" % \
+               (str(self.interval[0].strftime("%d/%m/%Y")),
+                str(self.interval[1].strftime("%d/%m/%Y")),
+                "%" if self.page is None else str(self.page),
+                "%" if self.verdicts is None else str(self.verdicts)
+                )

@@ -7,28 +7,43 @@ import crawler_methods
 from elyon_crawler import ElyonCrawler
 
 
-def serialize(lst):
+def serialize(lst, c):
     if len(lst) > 0:
-        with open('elyon.fails', 'wb') as f:
-            pickle.dump(lst, f)
-            f.flush()
+        try:
+            with open('elyon_%s.fails' % datetime.datetime.now().strftime("%d%m%y%H%M"), 'wb') as f:
+                pickle.dump(lst, f)
+                f.flush()
+            with open('elyon_serialized_data', 'w') as f:
+                for err in lst:
+                    f.write(str(err) + os.linesep)
+                f.flush()
+        except Exception as e:
+            c.log_message(crawler_methods.LogLevel.ERROR,
+                          "Crawler exception: An exception was thrown while serializing the fault list to file: "
+                          + str(e) + os.linesep + traceback.format_exc()
+                          )
+            sys.exit()
 
 
-def deserialize():
-    with open('elyon.fails', 'rb') as f:
-        s = pickle.load(f)
-    return s
+def deserialize(file, c):
+    try:
+        with open(file, 'rb') as f:
+            s = pickle.load(f)
+        return s
+    except FileNotFoundError:
+        c.log_message(crawler_methods.LogLevel.ERROR, "Crawler exception: Retry file not found")
+        sys.exit(-1)
 
 
 def main(argv):
     SCRIPT_HELP = '''ElyonCrawler v1.0 by Daniel Mittelman, 2015
-Usage: elyon [Options] [Targets] [-b dd/mm/yyyy] [-e dd/mm/yyyy]
+Usage: elyon [Options] [Targets] [-b dd/mm/yyyy] [-e dd/mm/yyyy] [-R FILE]
 A web crawler that extracts detailed verdict information from the Israeli Supreme Court's online data sources
 
 Crawl work mode:
     -b                        Start crawling from this date
-    -e                        Stop crawling when reaching this date
-    -R, --retry               Retry failed verdicts from a previous run. Overrides the -b and -e flags
+    -e                        Stop crawling when reaching this date (inclusive)
+    -r, --retry               Retry failed verdicts from this previous run file. Overrides the -b and -e flags
 
 Output targets:
     -o, --output              Output SQLite database file path (Default: elyon.db)
@@ -53,10 +68,10 @@ Examples:
     Download all verdicts (since 1987) except for confidential verdicts, using a timeout of 90 seconds:
         elyon -S -t 90
     Complete the last run by downloading all the verdicts that have failed
-        elyon -R
+        elyon -r elyon_201505051230.fails
 '''
     start, end = datetime.datetime(1987, 11, 18), datetime.datetime.today()
-    retry = False
+    retry = None
     logfile, outputfile = 'elyon.log', 'elyon.db'
     verbose = False
     quiet = False
@@ -72,7 +87,7 @@ Examples:
         sys.exit(0)
 
     try:
-        opts, args = getopt.getopt(argv, "b:e:o:l:t:c:STRFqvhdy",
+        opts, args = getopt.getopt(argv, "b:e:o:l:t:c:r:STFqvhdy",
                                    ["help", "verbose", "output", "log", "skip-confidential",
                                     "timeout", "threads", "include-technical", "full-text", "retry"])
     except getopt.GetoptError:
@@ -84,11 +99,19 @@ Examples:
             print(SCRIPT_HELP)
             sys.exit(0)
         elif opt == "-b":
-            start = datetime.datetime.strptime(arg, "%d/%m/%Y")
+            try:
+                start = datetime.datetime.strptime(arg, "%d/%m/%Y")
+            except:
+                print("The begin date is malformed, exiting")
+                sys.exit()
         elif opt == "-e":
-            end = datetime.datetime.strptime(arg, "%d/%m/%Y")
-        elif opt in ("-R", "--retry"):
-            retry = True
+            try:
+                end = datetime.datetime.strptime(arg, "%d/%m/%Y")
+            except:
+                print("The end date is malformed, exiting")
+                sys.exit()
+        elif opt in ("-r", "--retry"):
+            retry = arg
         elif opt in ("-o", "--output"):
             outputfile = arg
         elif opt in ("-l", "--log"):
@@ -125,19 +148,18 @@ Examples:
     # Start the crawling process. Upon a critical error or a keyboard interrupt,
     # serialize the list of failures to file and exit with the appropriate exit code
     try:
-        if not retry:
+        if retry is None:
             c.crawl()
         else:
-            c.retry_crawl(deserialize())
+            c.retry_crawl(deserialize(retry, c))
     except KeyboardInterrupt:
-        c.log_message(crawler_methods.LogLevel.INFO,
-                      "Exiting on user request")
+        c.log_message(crawler_methods.LogLevel.INFO, "Exiting on user request")
     except Exception as e:
         c.log_message(crawler_methods.LogLevel.ERROR,
                                 "Crawler exception: " + str(e) + os.linesep + traceback.format_exc())
     finally:
         # Serialize all the FaultEntity instances into file and exit
-        serialize(c.get_retry_list())
+        serialize(c.get_retry_list(), c)
         sys.exit()
 
 if __name__ == "__main__":
