@@ -28,7 +28,7 @@ class ElyonDatabase:
                        "court_fees_mandated INTEGER, "
                        "is_technical INTEGER, "
                        "verdict_type TEXT, "
-                       "verdict_url TEXT)")
+                       "verdict_url TEXT UNIQUE)")
         cursor.execute("CREATE TABLE IF NOT EXISTS verdict_judges ("
                        "row_id INTEGER, "
                        "judge_name TEXT)")
@@ -51,28 +51,35 @@ class ElyonDatabase:
         if self.conn is not None:
             cursor = self.conn.cursor()
 
-            # Insert the basic metadata and retain the unique row_id
-            cursor.execute("INSERT INTO verdicts "
-                           "(date, court, subject, case_id, verdict_type, verdict_url, status,"
-                           "is_technical, is_unanimous, court_fees_mandated) "
-                           "VALUES(?,?,?,?,?,?,?,?,?,?)",
-                           (case.date, case.group, case.subject, case.case_id,
-                            case.doc_type, case.doc_url, case.status, case.technical,
-                            case.is_unanimous, case.fees_mandated))
-            row_id = str(cursor.lastrowid)
+            try:
+                # Insert the basic metadata and retain the unique row_id
+                cursor.execute("INSERT INTO verdicts "
+                               "(date, court, subject, case_id, verdict_type, verdict_url, status,"
+                               "is_technical, is_unanimous, court_fees_mandated) "
+                               "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                               (case.date, case.group, case.subject, case.case_id,
+                                case.doc_type, case.doc_url, case.status, case.technical,
+                                case.is_unanimous, case.fees_mandated))
+                row_id = str(cursor.lastrowid)
 
-            # Insert the list of judges in the case to the appropriate table
-            judges = [(j, ) for j in case.judges]
-            cursor.executemany("INSERT INTO verdict_judges VALUES(" + row_id + ",?)", judges)
+                # Insert the list of judges in the case to the appropriate table
+                judges = [(j, ) for j in case.judges]
+                cursor.executemany("INSERT INTO verdict_judges VALUES(" + row_id + ",?)", judges)
 
-            # Insert the lists of present sides in court
-            cursor.executemany("INSERT INTO verdict_parties VALUES(" + row_id + ",?,?,?)", case.sides)
+                # Insert the lists of present sides in court
+                cursor.executemany("INSERT INTO verdict_parties VALUES(" + row_id + ",?,?,?)", case.sides)
 
-            # If full text extraction is required, save the text as well (removing tabs)
-            if self.full_text:
-                cursor.execute("INSERT INTO verdict_fulltext VALUES(" + row_id + ",?)",
-                               (case.doc_text.replace("\t", ""), ))
-
-            # Commit changes and close the cursor
-            self.conn.commit()
-            cursor.close()
+                # If full text extraction is required, save the text as well (removing tabs)
+                if self.full_text:
+                    cursor.execute("INSERT INTO verdict_fulltext VALUES(" + row_id + ",?)",
+                                   (case.doc_text.replace("\t", ""), ))
+            except sqlite3.IntegrityError:
+                # An IntegrityError is thrown when the crawler is trying to insert a verdict that already
+                # exists in the database. Specifically - a verdict with an existing verdict URL is being inserted,
+                # which breaks the UNIQUE constraint of the verdict_url field.
+                # In that case - suppress and move on without notifying anything
+                pass
+            finally:
+                # Commit changes and close the cursor
+                self.conn.commit()
+                cursor.close()
