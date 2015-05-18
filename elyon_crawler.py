@@ -372,7 +372,7 @@ class ElyonCrawler:
                 success_pages, failed_pages = self.get_pages_for_search(req, soup, specific_pages=[fault.page])
 
             for fp in failed_pages:
-                self.add_failure(FaultEntity(fault.interval, fp.page))
+                self.add_failure(FaultEntity(fault.interval, fp))
                 continue
 
             if fault.verdicts is None:  # If the entity is a complete page, fetch all the verdicts
